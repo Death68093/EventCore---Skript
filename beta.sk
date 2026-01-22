@@ -1,0 +1,608 @@
+on join:
+    if {server::name} isn't set:
+        set {server::name} to "My cool server!"
+    if {server::%uuid of player%::tokens} isn't set:
+        set {server::%uuid of player%::tokens} to 0
+
+    teleport player to {server::spawn}
+    clear the player's inventory
+    clear helmet of player
+    clear chestplate of player
+    clear leggings of player
+    clear boots of player
+
+
+
+# Main Host Panel
+command /ec:
+    executable by: players
+    permission: ec.host.panel
+    description: Open the EventCore host panel
+    trigger:
+        set {_panel} to a new chest inventory with 6 rows named "EventCore - Home"
+        open {_panel} to player
+
+on inventory click:
+    if name of event-inventory is "EventCore - Home":
+        cancel event
+
+
+# Warps / TP
+command /setwarp <text>:
+    executable by: players
+    description: Create a Warp
+    permission: ec.host.warp.create
+    usage: /setwarp <warp_name>
+    aliases: createwarp, makewarp, addwarp
+    trigger:
+        set {_name} to arg-1
+        set {_loc} to the player's location
+
+        if {server::warps::%{_name}%} is set:
+            send "&cThis warp already exists!" to player
+            stop
+
+        set {server::warps::%{_name}%} to {_name}
+        set {server::warps::%{_name}%::loc} to {_loc}
+        send "&2Created warp &e%{server::warps::%{_name}%}%&2 at location: &e%{server::warps::%{_name}%::loc}%"
+
+command /delwarp <text>:
+    description: Delete a Warp
+    permission: ec.host.warp.delete
+    usage: /delwarp <warp_name>
+    aliases: deletewarp, unsetwarp, removewarp, remwarp
+    trigger:
+        set {_name} to arg-1
+
+        if {server::warps::%{_name}%} isn't set:
+            send "&cThis warp doesn't exist!" to player
+            stop
+
+        delete {server::warps::%{_name}%}
+        send "&2Warp &e%{_name}%&2 Successfully deleted!"
+
+command /tphere <text>:
+    executable by: players
+    description: Tp a player/all/dead/alive players to you
+    permission: ec.host.tp.here
+    usage: /tphere <player|all|dead|alive>
+    trigger:
+        set {_arg} to arg-1
+        if {_arg} is "all":
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to player
+            send "&2All players teleported to you!" to player
+        else if {_arg} is "dead":
+            loop {server::dead::*}:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to player
+            send "&2All dead players teleported to you!" to player
+        else if {_arg} is "alive":
+            loop {server::alive::*}:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to player
+            send "&2All alive players teleported to you!" to player
+        else:
+            set {_arg} to {_arg} parsed as player
+            if {_arg} isn't set:
+                send "&cInvalid player/player is not online!" to player
+            else:
+                teleport {_arg} to player
+                send "&e%{_arg}%&2 has been teleported to you!" to player
+command /tpall [<text>]:
+    executable by: players
+    description: Teleported all players to you or a warp
+    usage: /tpall [warp_name]
+    permission: ec.host.tp.all
+    trigger:
+        set {_arg} to arg-1
+        if {_arg} isn't set:
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to player
+            send "&2All players teleported to you!" to player
+        else:
+            set {_warp} to {server::warps::%{_arg}%::loc}
+            if {_warp} isn't set:
+                send "&cThis warp does not exist!" to player
+                stop
+            else:
+                loop all players:
+                    if {server::hosts::*} doesn't contain uuid of loop-value:
+                        teleport loop-value to {_warp}
+            send "&2All players teleported to &e!%{_warp}%!" to player
+
+command /tpalive [<text>]:
+    executable by: players
+    description: Teleport all alive players to you or a warp
+    permission: ec.host.tp.all
+    trigger:
+        set {_arg} to arg-1
+        if {_arg} is not set:
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to player
+            send "&2All alive players teleported to you!"
+        else:
+            set {_warp} to {server::warps::%{_arg}%::loc}
+            if {_warp} is not set:
+                send "&cThis warp does not exist!"
+                stop
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to {_warp}
+            send "&2All alive players teleported to &e%{_arg}%!"
+
+command /tpdead [<text>]:
+    executable by: players
+    description: Teleport all dead players to you or a warp
+    permission: ec.host.tp.all
+    trigger:
+        set {_arg} to arg-1
+        if {_arg} is not set:
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    teleport loop-value to player
+            send "&2All dead players teleported to you!"
+        else:
+            set {_warp} to {server::warps::%{_arg}%::loc}
+            if {_warp} is not set:
+                send "&cThis warp does not exist!"
+                stop
+            loop all players:
+                if {server::hosts::*} doesn't contain loop-value:
+                    teleport loop-value to {_warp}
+            send "&2All dead players teleported to &e%{_arg}%!"
+
+# Host management
+command /addhost <player>:
+    description: Set a player to be a host (does not give more permissions!)
+    permission: ec.host.addhost
+    aliases: createhost, makehost, sethost
+    trigger:
+        set {_arg} to arg-1
+        if {server::hosts::*} contains uuid of {_arg}:
+            send "&cThis player is already a host!"
+            stop
+        add uuid of {_arg} to {server::hosts::*} 
+        send "&2Made &e%{_arg}%&2 a host!"
+
+command /remhost <offline player>:
+    description: Remove a player from the host list (does not remove permissions!)
+    permission: ec.host.remhost
+    aliases: removehost, deletehost, unsethost
+    trigger:
+        set {_arg} to arg-1
+        if {server::hosts::*} doesn't contain uuid of {_arg}:
+            send "&cThis player is not a host!"
+            stop
+        remove uuid of {_arg} from {server::hosts::*} 
+        send "&2Remove &e%{_arg}%&2 from host list!"
+
+# Server management
+command /setserver <text>:
+    description: Set the server name
+    permission: ec.server.setserver
+    usage: /setserver <name>
+    trigger:
+        set {_name} to arg-1
+        set {server::name} to {_name}
+        send "&2Set server name to &e%{server::name}%!"
+
+command /setevent <text>:
+    description: Set the next event
+    permission: ec.server.event.setevent
+    usage: /setevent <name>
+    trigger:
+        set {_name} to arg-1
+        set {server::event} to {_name}
+        send "&2Set event to &e%{server::event}%!"
+
+command /setspawn:
+    description: Set the server's spawnpoint
+    permission: ec.setspawn
+    trigger:
+        set {server::spawn} to the player's position
+        loop all players:
+            if loop-value has permission "ec.setspawn":
+                send "&e%player%&2 has set the spawnpoint to &e%{server::spawn}%"
+
+# Timers and Cooldowns
+command /timer [<text>]:
+    description: Start or cancel a countdown timer
+    permission: ec.host.timer
+    usage: /timer (cancel|<seconds>)
+    trigger:
+        if arg-1 is "cancel":
+            if {server::timer} > 0:
+                set {server::timer} to 0
+                send "&2Timer cancelled!"
+            else:
+                send "&cNo timer running!"
+            stop
+
+        set {_time} to arg-1 parsed as integer
+        if {_time} <= 0:
+            send "&cTime must be greater than 0!"
+            stop
+
+        set {server::timer} to {_time}
+        send "&2Timer started for %{_time}% seconds!"
+
+        while {server::timer} > 0:
+            broadcast "&e%{server::timer}% seconds left!"
+            wait 1 second
+            remove 1 from {server::timer}
+
+        # This will always run after the timer reaches 0
+        broadcast "&2Times up!"
+
+command /eventcooldown <number>:
+    description: Start the event cooldown
+    permission: ec.host.event.cooldown
+    usage: /eventcooldown <minutes>
+    trigger:
+        set {_arg} to arg-1
+        if {_arg} <= 0:
+            send "&cTime must be greater than 0!"
+            stop
+
+        set {_seconds} to {_arg} * 60
+        if {_arg} > 1:
+            broadcast "&eEvent starts in &c%({_seconds} / 60)% &eminutes!"
+        while {_seconds} > 0:
+            if {_seconds} >= 300:
+                if mod({_seconds},300) = 0:
+                    broadcast "&e%{server::event}% starts in &c%({_seconds} / 60)% &eminutes!"
+
+            # 1 minute
+            if {_seconds} = 60:
+                broadcast "&e%{server::event}% starts in &c1 minute!"
+
+            # 30 seconds
+            if {_seconds} = 30:
+                broadcast "&e%{server::event}% starts in &c30 seconds!"
+
+            # 10 seconds
+            if {_seconds} <= 10:
+                broadcast "&e%{server::event}% starts in &c%{_seconds}% &eseconds!"
+
+            wait 1 second
+            remove 1 from {_seconds}
+        broadcast "&a%{server::event}% is starting!!"
+
+
+# Kits
+command /createkit <text>:
+    executable by: players
+    description: Create a kit
+    permission: ec.host.kits.create
+    usage: /createkit <name>
+    aliases: setkit, makekit, addkit
+    trigger:
+        set {_kit} to lowercase arg-1
+
+        if {server::kits::%{_kit}%::exists} is true:
+            send "&cThis kit already exists!"
+            stop
+        set {server::kits::%{_kit}%::exists} to true
+
+        set {server::kits::%{_kit}%::armor::helmet} to player's helmet
+        set {server::kits::%{_kit}%::armor::chestplate} to player's chestplate
+        set {server::kits::%{_kit}%::armor::leggings} to player's leggings
+        set {server::kits::%{_kit}%::armor::boots} to player's boots
+
+        set {_slot} to 0 
+        loop 36 times:
+            set {server::kits::%{_kit}%::inv::%{_slot}%} to slot {_slot} of player's inventory
+            add 1 to {_slot}
+
+        send "&aCreated kit: &e%{_kit}%"
+
+command /givekit <text> <text>:
+    description: Give a kit to a player/group of players
+    permission: ec.kits.givekit
+    aliases: grantkit
+    usage: /givekit <player|all|alive|dead> <kit>
+    trigger:
+        set {_arg} to arg-1
+        set {_kit} to lowercase arg-2
+
+        if {server::kits::%{_kit}%::exists} is not true:
+            send "&cThis kit does not exist!"
+            stop
+
+        if {_arg} is "all":
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    giveKit(loop-value, {_kit})
+            send "&2Gave kit &e%{_kit}%&2 to all players!"
+            stop
+
+        if {_arg} is "alive":
+            loop {server::alive::*}:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    giveKit(loop-value, {_kit})
+            send "&2Gave kit &e%{_kit}%&2 to all alive players!"
+            stop
+
+        if {_arg} is "dead":
+            loop {server::dead::*}:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    giveKit(loop-value, {_kit})
+            send "&2Gave kit &e%{_kit}%&2 to all dead players!"
+            stop
+
+        set {_p} to {_arg} parsed as player
+        if {_p} is not set:
+            send "&cInvalid player/player is not online!"
+            stop
+
+        giveKit({_p}, {_kit})
+        send "&2Gave kit &e%{_kit}%&2 to &e%{_p}%!"
+
+function giveKit(p: player, kit: text):
+    clear {_p}'s inventory
+
+    set {_p}'s helmet to {server::kits::%{_kit}%::armor::helmet}
+    set {_p}'s chestplate to {server::kits::%{_kit}%::armor::chestplate}
+    set {_p}'s leggings to {server::kits::%{_kit}%::armor::leggings}
+    set {_p}'s boots to {server::kits::%{_kit}%::armor::boots}
+    set {_slot} to 0
+    loop 36 times:
+        set slot {_slot} of {_p}'s inventory to {server::kits::%{_kit}%::inv::%{_slot}%}
+        add 1 to {_slot}
+
+command /deletekit <text>:
+    executable by: players
+    description: Delete a kit
+    permission: ec.host.kits.delete
+    usage: /deletekit <name>
+    aliases: delkit, removekit
+    trigger:
+        set {_kit} to lowercase arg-1
+        if {server::kits::%{_kit}%::exists} is not true:
+            send "&cThis kit does not exist!"
+            stop
+
+        delete {server::kits::%{_kit}%}
+        send "&2Deleted kit: &e%{_kit}%"
+
+command /invsee <player>:
+    executable by: players
+    description: View/Edit a player's inventory
+    permission: ec.invsee
+    trigger:
+        set {_player} to arg-1
+        set {_inv} to {_player}'s inventory
+        open {_inv} to player
+
+command /stats [<player>]:
+    description: View a player's stats
+    trigger:
+        set {_p} to arg-1
+        if {_p} is not set: 
+            set {_p} to player
+        send "&eStats for %{_p}%:"
+        send "Tokens: %{server::%uuid of {_p}%::tokens}%"
+        send "Kills: %{server::%uuid of {_p}%::kills}%"
+        send "Deaths: %{server::%uuid of {_p}%::deaths}%"
+
+
+on death of player:
+    if attacker is a player:
+        add 1 to {server::%uuid of attacker%::kills}
+        add 1 to {server::%uuid of victim%::deaths}
+
+
+
+# Gamemode
+command /gmc [<player>]:
+    description: Switch to creative mode
+    permission: ec.host.gamemode.creative
+    trigger:
+        set {_p} to arg-1
+        if {_p} is set:
+            set {_p}'s gamemode to creative
+            stop
+        set the player's gamemode to creative
+
+command /gms [<player>]:
+    description: Switch to survival mode
+    permission: ec.host.gamemode.survival
+    trigger:
+        set {_p} to arg-1
+        if {_p} is set:
+            set {_p}'s gamemode to survival
+            stop
+        set the player's gamemode to survival
+
+command /gmsp [<player>]:
+    description: Switch to spectator mode
+    permission: ec.host.gamemode.spectator
+    trigger:
+        set {_p} to arg-1
+        if {_p} is set:
+            set {_p}'s gamemode to spectator
+            stop
+        set the player's gamemode to spectator
+    
+command /gma [<player>]:
+    description: Switch to adventure mode
+    permission: ec.host.gamemode.adventure
+    trigger:
+        set {_p} to arg-1
+        if {_p} is set:
+            set {_p}'s gamemode to adventure
+            stop
+        set the player's gamemode to adventure
+
+# Wins and Tokens
+command /addwin <player>:
+    description: Give a player a win
+    permission: ec.host.wins.add
+    aliases: givewin, grantwin
+    trigger:
+        set {_p} to arg-1
+
+        add 1 to {server::%uuid of {_p}%::wins}
+        broadcast "&e%{_p}%&2 has received a win! They now have &e%{server::%uuid of {_p}%::wins}% wins!"
+
+command /addtoken <player>:
+    description: Give a player a token
+    permission: ec.host.tokens.add
+    aliases: givetoken, granttoken, grantoken
+    trigger:
+        set {_p} to arg-1
+
+        add 1 to {server::%uuid of {_p}%::tokens}
+        broadcast "&e%{_p}%&2 has received a revive token! They now have &e%{server::%uuid of {_p}%::wins}% revive tokens!"
+
+command /removewin <player>:
+    description: Remove a win from a player
+    permission: ec.host.wins.remove
+    aliases: givewin, grantwin
+    trigger:
+        set {_p} to arg-1
+        if {server::%uuid of {_p}%::wins} > 0:
+            send "&cThey don't have any wins!"
+            stop
+        remove 1 from {server::%uuid of {_p}%::wins}
+        broadcast "&e%{_p}%&c has lost a win! They now have &e%{server::%uuid of {_p}%::wins}% wins!"
+
+command /removetoken <player>:
+    description: Remove a token from a player
+    permission: ec.host.tokens.remove
+    aliases: taketoken, remtoken, retractoken
+    trigger:
+        set {_p} to arg-1
+        if {server::%uuid of {_p}%::tokens} > 0:
+            send "&cThey don't have any tokens!"
+            stop
+        remove 1 from {server::%uuid of {_p}%::tokens}
+        broadcast "&e%{_p}%&c has lost a revive token! They now have &e%{server::%uuid of {_p}%::tokens}% revive tokens!"
+
+command /usetoken:
+    description: Use a revive token
+    cooldown: 1 minute
+    cooldown message: You can request a revive in %remaining time%!
+    trigger:
+        if {server::%uuid of player%::requestingRevive} is true:
+            send "&cYou are already requesting a revive!"
+        if {server::%uuid of player%::tokens} < 1:
+            send "&cYou don't have any tokens!"
+            stop
+        
+        loop all players:
+            if loop-value has permission "ec.host.tokens.accept":
+                send "&e%player%&2 is requesting to use a revive token!"
+                send "&e/accepttoken %player%&2 - Accept their token"
+                send "&e/denytoken %player%&2 - Deny their token"
+        set {server::%uuid of player%::requestingRevive} to true
+
+command /accepttoken <player>:
+    description: Accept a player's revive token
+    permission: ech.host.tokens.accept
+    trigger:
+        set {_p} to arg-1
+        if {server::%uuid of {_p}%::requestingRevive} isn't true:
+            send "&cThis player isn't requesting a revive!"
+            stop
+        set {server::%uuid of {_p}%::requestingRevive} to false
+        remove 1 from {server::%uuid of {_p}%::tokens}
+        broadcast "&e%{_p}%&2 has used a revive token!"
+        send "&2You accepted %{_p}%'s token!" to player
+        send "&2You're token has been accepted!" to {_p}
+
+command /denytoken <player>:
+    description: Deny a player's revive token
+    permission: ec.host.tokens.deny
+    trigger:
+        set {_p} to arg-1
+        if {server::%uuid of {_p}%::requestingRevive} isn't true:
+            send "&cThis player isn't requesting a revive!"
+            stop
+        set {server::%uuid of {_p}%::requestingRevive} to false
+        send "&cYou denied %{_p}%'s token!" to player
+        send "&cYou're token has been denied!" to {_p}
+
+command /pvp:
+    description: Set the pvp flag of the WorldGuard region
+    permission: ec.host.worldguard.pvp
+    trigger:
+        if plugin "WorldGuard" isn't enabled:
+            send "&cWorldGuard is not installed on this server!"
+            stop
+        if {server::region::%{server::%uuid of player%::region}%::pvp} is true:
+            set {server::region::%{server::%uuid of player%::region}%::pvp} to false
+            make player execute command "region flag %{server::%uuid of player%::region}% -w world pvp deny"
+        else:
+            set {server::region::%{server::%uuid of player%::region}%::pvp} to true
+            make player execute command "region flag %{server::%uuid of player%::region}% -w world pvp allow"
+
+# --- BLOCK BREAK ---
+command /break:
+    description: Toggle block breaking in the region
+    permission: ec.host.worldguard.break
+    trigger:
+        if plugin "WorldGuard" isn't enabled:
+            send "&cWorldGuard is not installed!"
+            stop
+        if {server::region::%{server::%uuid of player%::region}%::break} is true:
+            set {server::region::%{server::%uuid of player%::region}%::break} to false
+            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-break deny"
+            send "&cBlock breaking disabled."
+        else:
+            set {server::region::%{server::%uuid of player%::region}%::break} to true
+            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-break allow"
+            send "&aBlock breaking enabled."
+
+# --- BLOCK PLACE ---
+command /place:
+    description: Toggle block placing in the region
+    permission: ec.host.worldguard.place
+    trigger:
+        if plugin "WorldGuard" isn't enabled:
+            send "&cWorldGuard is not installed!"
+            stop
+        if {server::region::%{server::%uuid of player%::region}%::place} is true:
+            set {server::region::%{server::%uuid of player%::region}%::place} to false
+            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-place deny"
+            send "&cBlock placing disabled."
+        else:
+            set {server::region::%{server::%uuid of player%::region}%::place} to true
+            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-place allow"
+            send "&aBlock placing enabled."
+
+# --- WATER FLOW ---
+command /flow:
+    description: Toggle water & lava flow in the region
+    permission: ec.host.worldguard.flow
+    trigger:
+        if plugin "WorldGuard" isn't enabled:
+            send "&cWorldGuard is not installed!"
+            stop
+        if {server::region::%{server::%uuid of player%::region}%::flow} is true:
+            set {server::region::%{server::%uuid of player%::region}%::flow} to false
+            make player execute command "region flag %{server::%uuid of player%::region}% water-flow deny"
+            make player execute command "region flag %{server::%uuid of player%::region}% lava-flow deny"
+            send "&cFluid flow disabled."
+        else:
+            set {server::region::%{server::%uuid of player%::region}%::flow} to true
+            make player execute command "region flag %{server::%uuid of player%::region}% water-flow allow"
+            make player execute command "region flag %{server::%uuid of player%::region}% lava-flow allow"
+            send "&aFluid flow enabled."
+
+
+command /getregion:
+    description: Get your region
+    permission: ec.host.worldguard.region.get
+    trigger:
+        send {server::%uuid of player%::region}
+on region leave:
+    delete {server::%uuid of player%::region}
+
+on region enter:
+    wait 1 tick
+    set {server::%uuid of player%::region} to region
