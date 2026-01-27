@@ -1,17 +1,26 @@
 on join:
+    wait 5 ticks
     if {server::name} isn't set:
         set {server::name} to "My cool server!"
     if {server::%uuid of player%::tokens} isn't set:
         set {server::%uuid of player%::tokens} to 0
 
-    teleport player to {server::spawn}
+    if {server::alive::*} contains player:
+        remove player from {server::alive::*}
+    if {server::dead::*} doesn't contain player:
+        add player to {server::dead::*}
+    if {server::spawn} is set:
+        teleport player to {server::spawn}
+    else:
+        loop all players:
+            if loop-player has permission "ec.setspawn":
+                send "&cA player has joined but the spawn was not set and they were teleported to the worldspawn!"
+                send "&cPlease set one using &e`/setspawn`"
     clear the player's inventory
     clear helmet of player
     clear chestplate of player
     clear leggings of player
     clear boots of player
-
-
 
 # Main Host Panel
 command /ec:
@@ -116,13 +125,14 @@ command /tpall [<text>]:
 command /tpalive [<text>]:
     executable by: players
     description: Teleport all alive players to you or a warp
-    permission: ec.host.tp.all
+    permission: ec.host.tp.alive
     trigger:
         set {_arg} to arg-1
         if {_arg} is not set:
-            loop all players:
+            loop {server::alive::*}:
                 if {server::hosts::*} doesn't contain uuid of loop-value:
                     teleport loop-value to player
+
             send "&2All alive players teleported to you!"
         else:
             set {_warp} to {server::warps::%{_arg}%::loc}
@@ -137,11 +147,11 @@ command /tpalive [<text>]:
 command /tpdead [<text>]:
     executable by: players
     description: Teleport all dead players to you or a warp
-    permission: ec.host.tp.all
+    permission: ec.host.tp.dead
     trigger:
         set {_arg} to arg-1
         if {_arg} is not set:
-            loop all players:
+            loop {server::dead::*}:
                 if {server::hosts::*} doesn't contain uuid of loop-value:
                     teleport loop-value to player
             send "&2All dead players teleported to you!"
@@ -151,7 +161,7 @@ command /tpdead [<text>]:
                 send "&cThis warp does not exist!"
                 stop
             loop all players:
-                if {server::hosts::*} doesn't contain loop-value:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
                     teleport loop-value to {_warp}
             send "&2All dead players teleported to &e%{_arg}%!"
 
@@ -226,7 +236,9 @@ command /timer [<text>]:
         if {_time} <= 0:
             send "&cTime must be greater than 0!"
             stop
-
+        if {server::timer} > 0:
+            send "&cA timer is already running!"
+            stop
         set {server::timer} to {_time}
         send "&2Timer started for %{_time}% seconds!"
 
@@ -247,29 +259,33 @@ command /eventcooldown <number>:
         if {_arg} <= 0:
             send "&cTime must be greater than 0!"
             stop
-
-        set {_seconds} to {_arg} * 60
+        if {server::event::cooldown} > 0:
+            send "&cA cooldown is already running!"
+            stop
+        set {server::event::cooldown} to {_arg} * 60
         if {_arg} > 1:
-            broadcast "&eEvent starts in &c%({_seconds} / 60)% &eminutes!"
-        while {_seconds} > 0:
-            if {_seconds} >= 300:
-                if mod({_seconds},300) = 0:
-                    broadcast "&e%{server::event}% starts in &c%({_seconds} / 60)% &eminutes!"
+            broadcast "&eEvent starts in &c%({server::event::cooldown} / 60)% &eminutes!"
+        while {server::event::cooldown} > 0:
+            if {server::event::cooldown} is 0:
+                stop loop
+            if {server::event::cooldown} >= 300:
+                if mod({server::event::cooldown},300) = 0:
+                    broadcast "&e%{server::event}% starts in &c%({server::event::cooldown} / 60)% &eminutes!"
 
             # 1 minute
-            if {_seconds} = 60:
+            if {server::event::cooldown} = 60:
                 broadcast "&e%{server::event}% starts in &c1 minute!"
 
             # 30 seconds
-            if {_seconds} = 30:
+            if {server::event::cooldown} = 30:
                 broadcast "&e%{server::event}% starts in &c30 seconds!"
 
             # 10 seconds
-            if {_seconds} <= 10:
-                broadcast "&e%{server::event}% starts in &c%{_seconds}% &eseconds!"
+            if {server::event::cooldown} <= 10:
+                broadcast "&e%{server::event}% starts in &c%{server::event::cooldown}% &eseconds!"
 
             wait 1 second
-            remove 1 from {_seconds}
+            remove 1 from {server::event::cooldown}
         broadcast "&a%{server::event}% is starting!!"
 
 
@@ -385,16 +401,28 @@ command /stats [<player>]:
         if {_p} is not set: 
             set {_p} to player
         send "&eStats for %{_p}%:"
-        send "Tokens: %{server::%uuid of {_p}%::tokens}%"
-        send "Kills: %{server::%uuid of {_p}%::kills}%"
-        send "Deaths: %{server::%uuid of {_p}%::deaths}%"
+        send "&2Tokens: &e%{server::%uuid of {_p}%::tokens}%"
+        send "&2Wins: &e%{server::%uuid of {_p}%::wins}%"
+        send "&2Kills: &e%{server::%uuid of {_p}%::kills}%"
+        send "&2Deaths: &e%{server::%uuid of {_p}%::deaths}%"
 
 
 on death of player:
+    set {server::deathTime::%uuid of victim%} to now
+    force victim to respawn
     if attacker is a player:
         add 1 to {server::%uuid of attacker%::kills}
-        add 1 to {server::%uuid of victim%::deaths}
+    add 1 to {server::%uuid of victim%::deaths}
+    if {server::alive::*} contains victim:
+        remove victim from {server::alive::*}
+    if {server::dead::*} doesn't contain victim:
+        add victim to {server::dead::*}
 
+on respawn:
+    if {server::spawn} is set:
+        teleport player to {server::spawn}
+    else:
+        teleport player to spawn
 
 
 # Gamemode
@@ -457,7 +485,7 @@ command /addtoken <player>:
         set {_p} to arg-1
 
         add 1 to {server::%uuid of {_p}%::tokens}
-        broadcast "&e%{_p}%&2 has received a revive token! They now have &e%{server::%uuid of {_p}%::wins}% revive tokens!"
+        broadcast "&e%{_p}%&2 has received a revive token! They now have &e%{server::%uuid of {_p}%::tokens}% revive tokens!"
 
 command /removewin <player>:
     description: Remove a win from a player
@@ -465,7 +493,7 @@ command /removewin <player>:
     aliases: givewin, grantwin
     trigger:
         set {_p} to arg-1
-        if {server::%uuid of {_p}%::wins} > 0:
+        if {server::%uuid of {_p}%::wins} <= 0:
             send "&cThey don't have any wins!"
             stop
         remove 1 from {server::%uuid of {_p}%::wins}
@@ -477,7 +505,7 @@ command /removetoken <player>:
     aliases: taketoken, remtoken, retractoken
     trigger:
         set {_p} to arg-1
-        if {server::%uuid of {_p}%::tokens} > 0:
+        if {server::%uuid of {_p}%::tokens} <= 0:
             send "&cThey don't have any tokens!"
             stop
         remove 1 from {server::%uuid of {_p}%::tokens}
@@ -490,6 +518,7 @@ command /usetoken:
     trigger:
         if {server::%uuid of player%::requestingRevive} is true:
             send "&cYou are already requesting a revive!"
+            stop
         if {server::%uuid of player%::tokens} < 1:
             send "&cYou don't have any tokens!"
             stop
@@ -503,7 +532,7 @@ command /usetoken:
 
 command /accepttoken <player>:
     description: Accept a player's revive token
-    permission: ech.host.tokens.accept
+    permission: ec.host.tokens.accept
     trigger:
         set {_p} to arg-1
         if {server::%uuid of {_p}%::requestingRevive} isn't true:
@@ -528,18 +557,29 @@ command /denytoken <player>:
         send "&cYou're token has been denied!" to {_p}
 
 command /pvp:
-    description: Set the pvp flag of the WorldGuard region
+    description: Toggle PvP in the current region
     permission: ec.host.worldguard.pvp
     trigger:
         if plugin "WorldGuard" isn't enabled:
-            send "&cWorldGuard is not installed on this server!"
+            send "&cWorldGuard is not installed!"
             stop
-        if {server::region::%{server::%uuid of player%::region}%::pvp} is true:
-            set {server::region::%{server::%uuid of player%::region}%::pvp} to false
-            make player execute command "region flag %{server::%uuid of player%::region}% -w world pvp deny"
+
+        set {_reg} to {server::%uuid of player%::region}
+        set {_world} to {server::%uuid of player%::world}
+
+        if {_reg} is not set:
+            send "&cNo region detected."
+            stop
+
+        if {server::region::%{_reg}%::pvp} is true:
+            set {server::region::%{_reg}%::pvp} to false
+            make player execute command "region flag %{_reg}% -w %{_world}% pvp deny"
+            broadcast "&c⚔ PvP disabled &7in region &e%{_reg}% &7(%{_world}%)"
         else:
-            set {server::region::%{server::%uuid of player%::region}%::pvp} to true
-            make player execute command "region flag %{server::%uuid of player%::region}% -w world pvp allow"
+            set {server::region::%{_reg}%::pvp} to true
+            make player execute command "region flag %{_reg}% -w %{_world}% pvp allow"
+            broadcast "&a⚔ PvP enabled &7in region &e%{_reg}% &7(%{_world}%)"
+
 
 # --- BLOCK BREAK ---
 command /break:
@@ -549,14 +589,19 @@ command /break:
         if plugin "WorldGuard" isn't enabled:
             send "&cWorldGuard is not installed!"
             stop
-        if {server::region::%{server::%uuid of player%::region}%::break} is true:
-            set {server::region::%{server::%uuid of player%::region}%::break} to false
-            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-break deny"
-            send "&cBlock breaking disabled."
+
+        set {_reg} to {server::%uuid of player%::region}
+        set {_world} to {server::%uuid of player%::world}
+
+        if {server::region::%{_reg}%::break} is true:
+            set {server::region::%{_reg}%::break} to false
+            make player execute command "region flag %{_reg}% -w %{_world}% block-break deny"
+            broadcast "&c🧱 Block breaking disabled &7in &e%{_reg}%"
         else:
-            set {server::region::%{server::%uuid of player%::region}%::break} to true
-            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-break allow"
-            send "&aBlock breaking enabled."
+            set {server::region::%{_reg}%::break} to true
+            make player execute command "region flag %{_reg}% -w %{_world}% block-break allow"
+            broadcast "&a🧱 Block breaking enabled &7in &e%{_reg}%"
+
 
 # --- BLOCK PLACE ---
 command /place:
@@ -566,14 +611,19 @@ command /place:
         if plugin "WorldGuard" isn't enabled:
             send "&cWorldGuard is not installed!"
             stop
-        if {server::region::%{server::%uuid of player%::region}%::place} is true:
-            set {server::region::%{server::%uuid of player%::region}%::place} to false
-            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-place deny"
-            send "&cBlock placing disabled."
+
+        set {_reg} to {server::%uuid of player%::region}
+        set {_world} to {server::%uuid of player%::world}
+
+        if {server::region::%{_reg}%::place} is true:
+            set {server::region::%{_reg}%::place} to false
+            make player execute command "region flag %{_reg}% -w %{_world}% block-place deny"
+            broadcast "&c📦 Block placing disabled &7in &e%{_reg}%"
         else:
-            set {server::region::%{server::%uuid of player%::region}%::place} to true
-            make player execute command "region flag %{server::%uuid of player%::region}% -w world block-place allow"
-            send "&aBlock placing enabled."
+            set {server::region::%{_reg}%::place} to true
+            make player execute command "region flag %{_reg}% -w %{_world}% block-place allow"
+            broadcast "&a📦 Block placing enabled &7in &e%{_reg}%"
+
 
 # --- WATER FLOW ---
 command /flow:
@@ -583,26 +633,213 @@ command /flow:
         if plugin "WorldGuard" isn't enabled:
             send "&cWorldGuard is not installed!"
             stop
-        if {server::region::%{server::%uuid of player%::region}%::flow} is true:
-            set {server::region::%{server::%uuid of player%::region}%::flow} to false
-            make player execute command "region flag %{server::%uuid of player%::region}% water-flow deny"
-            make player execute command "region flag %{server::%uuid of player%::region}% lava-flow deny"
-            send "&cFluid flow disabled."
+
+        set {_reg} to {server::%uuid of player%::region}
+        set {_world} to {server::%uuid of player%::world}
+
+        if {server::region::%{_reg}%::flow} is true:
+            set {server::region::%{_reg}%::flow} to false
+            make player execute command "region flag %{_reg}% -w %{_world}% water-flow deny"
+            make player execute command "region flag %{_reg}% -w %{_world}% lava-flow deny"
+            broadcast "&c🌊 Fluid flow disabled &7in &e%{_reg}%"
         else:
-            set {server::region::%{server::%uuid of player%::region}%::flow} to true
-            make player execute command "region flag %{server::%uuid of player%::region}% water-flow allow"
-            make player execute command "region flag %{server::%uuid of player%::region}% lava-flow allow"
-            send "&aFluid flow enabled."
+            set {server::region::%{_reg}%::flow} to true
+            make player execute command "region flag %{_reg}% -w %{_world}% water-flow allow"
+            make player execute command "region flag %{_reg}% -w %{_world}% lava-flow allow"
+            broadcast "&a🌊 Fluid flow enabled &7in &e%{_reg}%"
 
-
-command /getregion:
-    description: Get your region
-    permission: ec.host.worldguard.region.get
+# --- FALL DAMAGE ---
+command /fall:
+    description: Toggle fall damage in the region
+    permission: ec.host.worldguard.fall
     trigger:
-        send {server::%uuid of player%::region}
-on region leave:
-    delete {server::%uuid of player%::region}
+        if plugin "WorldGuard" isn't enabled:
+            send "&cWorldGuard is not installed!"
+            stop
 
-on region enter:
-    wait 1 tick
-    set {server::%uuid of player%::region} to region
+        set {_reg} to {server::%uuid of player%::region}
+        set {_world} to {server::%uuid of player%::world}
+
+        if {_reg} is not set:
+            send "&cNo region detected."
+            stop
+
+        if {server::region::%{_reg}%::fall} is true:
+            set {server::region::%{_reg}%::fall} to false
+            make player execute command "region flag %{_reg}% -w %{_world}% fall-damage deny"
+            broadcast "&c🪂 Fall damage disabled &7in region &e%{_reg}% &7(%{_world}%)"
+        else:
+            set {server::region::%{_reg}%::fall} to true
+            make player execute command "region flag %{_reg}% -w %{_world}% fall-damage allow"
+            broadcast "&a🪂 Fall damage enabled &7in region &e%{_reg}% &7(%{_world}%)"
+
+# Scoreboard
+on join:
+    if {server::hosts::*} doesn't contain player:
+        set {_board} to player's scoreboard
+        set line 1 of {_board} to "Event:"
+        set score of line 1 of {_board} to {server::event}
+
+        set line 2 of {_board} to "Wins:"
+        set score of line 2 of {_board} to "&e%{server::%uuid of player%::wins}%"
+
+        set line 3 of {_board} to "Tokens:"
+        set score of line 3 of {_board} to "&e%{server::%uuid of player%::tokens}%"
+        set player's scoreboard to {_board}
+        set title of player's scoreboard to "&cDeath &eEvents"
+    else:
+        set {_board} to player's scoreboard
+        set line 1 of {_board} to "Event:"
+        set score of line 1 of {_board} to {server::event}
+
+        set line 2 of {_board} to "Alive:"
+        set score of line 2 of {_board} to "&e%size of {server::alive::*}%"
+
+        set line 3 of {_board} to "Dead:"
+        set score of line 3 of {_board} to "&e%size of {server::dead::*}%"
+
+        set line 4 of {_board} to "Total:"
+        set score of line 4 of {_board} to "&e%size of all players%"
+
+        set player's scoreboard to {_board}
+        set title of player's scoreboard to "&cDeath &eEvents &7- Host"
+
+every second:
+    loop all players:
+        if {server::hosts::*} doesn't contain loop-player:
+            set {_board} to loop-player's scoreboard
+            set line 1 of {_board} to "Event:"
+            set score of line 1 of {_board} to {server::event}
+
+            set line 2 of {_board} to "Wins:"
+            set score of line 2 of {_board} to "&e%{server::%uuid of loop-player%::wins}%"
+
+            set line 3 of {_board} to "Tokens:"
+            set score of line 3 of {_board} to "&e%{server::%uuid of loop-player%::tokens}%"
+            set loop-player's scoreboard to {_board}
+            set title of loop-player's scoreboard to "&cDeath &eEvents"
+        else:
+            set {_board} to loop-player's scoreboard
+            set line 1 of {_board} to "Event:"
+            set score of line 1 of {_board} to {server::event}
+
+            set line 2 of {_board} to "Alive:"
+            set score of line 2 of {_board} to "&e%size of {server::alive::*}%"
+
+            set line 3 of {_board} to "Dead:"
+            set score of line 3 of {_board} to "&e%size of {server::dead::*}%"
+
+            set line 4 of {_board} to "Total:"
+            set score of line 4 of {_board} to "&e%size of all players%"
+
+            set loop-player's scoreboard to {_board}
+            set title of loop-player's scoreboard to "&cDeath &eEvents &7- Host"
+
+
+on enter of region:
+    set {_rg} to "%region%"
+    set {_regions::*} to split {_rg} at " "
+    set {_region} to {_regions::1}
+    set {server::%uuid of player%::region} to {_region}
+    set {server::%uuid of player%::world} to name of player's world
+
+command /whereami:
+    permission: ec.whereami
+    trigger:
+        send "&aRegion: &e%{server::%uuid of player%::region}%"
+        send "&aWorld: &e%{server::%uuid of player%::world}%"
+
+
+
+
+# Revives
+function revivePlayer(p: player, user: player):
+    if {server::dead::*} contains {_p}:
+        remove {_p} from {server::dead::*}
+    if {server::alive::*} doesn't contain {_p}:
+        add {_p} to {server::alive::*}
+
+    clear {_p}'s inventory
+    set {_p}'s gamemode to survival
+    teleport {_p} to {_user}
+
+    send "&a☠ You have been revived!" to {_p}
+
+command /revive <text> [<number>]:
+    description: Revive players
+    permission: ec.host.revive
+    usage: /revive (all|last|<player>) [seconds]
+    aliases: rev, res
+    trigger:
+        set {_arg} to arg-1
+
+        # --- REVIVE ALL ---
+        if {_arg} is "all":
+            loop {server::dead::*}:
+                if {server::hosts::*} doesn't contain uuid of loop-value:
+                    revivePlayer(loop-value, player)
+            broadcast "&a✨ All players have been revived!"
+            stop
+
+        # --- REVIVE LAST ---
+        if {_arg} is "last":
+            set {_secs} to arg-2 parsed as number
+            if {_secs} is not set or {_secs} <= 0:
+                send "&cYou must specify seconds. &7(/revive last <seconds>)"
+                stop
+
+            set {_count} to 0
+            loop {server::dead::*}:
+                set {_t} to {server::deathTime::%uuid of loop-value%}
+                if {_t} is set:
+                    if difference between {_t} and now <= {_secs} seconds:
+                        revivePlayer(loop-value, player)
+                        add 1 to {_count}
+
+            if {_count} > 0:
+                broadcast "&a✨ Revived %{_count}% player(s) who died in the last %{_secs}%s!"
+            else:
+                send "&cNo players died in the last %{_secs}% seconds."
+            stop
+
+        # --- REVIVE PLAYER ---
+        set {_p} to {_arg} parsed as player
+        if {_p} is not set:
+            send "&cInvalid player!"
+            stop
+
+        if {server::dead::*} doesn't contain {_p}:
+            send "&cThat player is not dead!"
+            stop
+
+        revivePlayer({_p}, player)
+        broadcast "&a✨ %{_p}% has been revived!"
+
+# Mute chat
+command /mutechat:
+    description: Mute the chat so only hosts can talk
+    permission: ec.host.chat.mute
+    trigger:
+        if {server::chat::muted} is true:
+            send "&cChat is already muted!" to player
+            stop
+        set {server::chat::muted} to true
+        broadcast "&cChat has been muted! Only hosts can talk now."
+
+# Unmute chat
+command /unmutechat:
+    description: Unmute the chat
+    permission: ec.host.chat.mute
+    trigger:
+        if {server::chat::muted} is false:
+            send "&cChat is not muted!" to player
+            stop
+        set {server::chat::muted} to false
+        broadcast "&aChat has been unmuted! Everyone can talk now."
+
+# Block messages from non-hosts when chat is muted
+on chat:
+    if {server::chat::muted} is true:
+        if {server::hosts::*} does not contain uuid of player:
+            cancel event
+            send "&cChat is currently muted! Only hosts can speak."
