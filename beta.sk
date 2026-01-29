@@ -32,12 +32,12 @@ every second:
             if plugin "Vault" is enabled:
                 loop all players:
                     if {server::alive::*} contains loop-value:
-                        set player's display name to "&2%player's display name%&r"
+                        set display name of player to "&2%player's display name%&r"
                     else:
                         if {server::hosts::*} doesn't contain loop-value:
-                            set player's display name to "&c%player's display name%&r"
+                            set display name of player to "&c%player's display name%&r"
                         else:
-                            set player's display name to "&6%player's display name%&r"
+                            set display name of player to "&6%player's display name%&r"
 
 # Main Host Panel
 command /ec:
@@ -92,9 +92,9 @@ function openConfig(page: text = "home", player: player):
         set {_config} to a new chest inventory with 5 rows named "EC - Player Defaults"
         set slot 0 of {_config} to a barrier named "&cBack"
         if {ec::config::use-colored-names} is true:
-            set slot 12 of {_config} to lime wool named "&cDisable Colored Names" with lore "&2Colored names are &a&lENABLED"
+            set slot 10 of {_config} to lime wool named "&cDisable Colored Names" with lore "&2Colored names are &a&lENABLED"
         else:
-            set slot 12 of {_config} to red wool named "&cEnable Colored Names" with lore "&cColored names are &4&lDISABLED"
+            set slot 10 of {_config} to red wool named "&cEnable Colored Names" with lore "&cColored names are &4&lDISABLED"
         open {_config} to {_player}
 
     else if {_page} is "warps":
@@ -104,7 +104,7 @@ function openConfig(page: text = "home", player: player):
         set slot 13 of {_config} to a yellow wool named "&6List Warps"
         set slot 16 of {_config} to a red wool named "&cDelete a Warp"
         open {_config} to {_player}
-    else if {_page} is "ads"
+    else if {_page} is "ads":
         set {_config} to a new chest inventory with 5 rows named "EC - Advertisements"
         set slot 0 of {_config} to a barrier named "&cBack"
         set slot 10 of {_config} to a lime wool named "&2Create an ad"
@@ -121,6 +121,12 @@ on inventory click:
             close the player's inventory
         else if event-slot is 10:
             openConfig("dead", player)
+        else if event-slot is 12:
+            openConfig("player-manage", player)
+        else if event-slot is 14:
+            openConfig("warps", player)
+        else if event-slot is 16:
+            openConfig("ads", player)
     else if name of event-inventory is "EC - Dead Players":
         cancel event
         if event-slot is 0:
@@ -140,6 +146,8 @@ on inventory click:
                 set {ec::config::default-gamemode} to creative
             else if {ec::config::default-gamemode} is creative:
                 set {ec::config::default-gamemode} to spectator
+            else if {ec::config::default-gamemode} is spectator:
+                set {ec::config::default-gamemode} to survival
             else:
                 set {ec::config::default-gamemode} to adventure
             openConfig("dead", player)
@@ -945,6 +953,7 @@ command /revive <text> [<number>]:
     aliases: rev, res
     trigger:
         set {_arg} to arg-1
+        set {_arg2} to arg-2
 
         # --- REVIVE ALL ---
         if {_arg} is "all":
@@ -956,8 +965,11 @@ command /revive <text> [<number>]:
 
         # --- REVIVE LAST ---
         if {_arg} is "last":
-            set {_secs} to arg-2 parsed as number
-            if {_secs} is not set or {_secs} <= 0:
+            set {_secs} to {_arg2} parsed as number
+            if {_secs} is not set:
+                send "&cYou must specify seconds. &7(/revive last <seconds>)"
+                stop
+            if {_secs} <= 0:
                 send "&cYou must specify seconds. &7(/revive last <seconds>)"
                 stop
 
@@ -965,7 +977,7 @@ command /revive <text> [<number>]:
             loop {server::dead::*}:
                 set {_t} to {server::deathTime::%uuid of loop-value%}
                 if {_t} is set:
-                    if difference between {_t} and now <= {_secs} seconds:
+                    if difference between {_t} and now is less than or equal to {_secs} seconds:
                         revivePlayer(loop-value, player)
                         add 1 to {_count}
 
@@ -1166,6 +1178,7 @@ command /createad:
     permission: ec.host.ad.create
     trigger:
         set {server::%uuid of player%::awating::ad::create::name} to true
+        send "&2Type an ID or Name for the ad"
 
 command /deletead <text>:
     description: Delete an ad
@@ -1196,6 +1209,7 @@ command /editad <text> <number>:
         set {_ad} to arg-1
         set {_line} to arg-2
         set {server::%uuid of player%::awating::ad::edit::line} to "%{_ad}%:%{_line}%"
+        send "&2Type the line of the ad"
         
 on chat:
     # Creating an ad
@@ -1213,7 +1227,7 @@ on chat:
         set {_words::*} to {server::%uuid of player%::awating::ad::edit::line} split at ":"
         set {_ad} to {_words::1}
         set {_line} to {_words::2}
-        if not {server::ads::%{_ad}%} is set:
+        if {server::ads::%{_ad}%} isn't set:
             send "&cAd &e%{_ad}% &cdoesn't exist! Use &e/createad <ad> &cto make one."
         else:
             set {server::ads::%{_ad}%::line::%{_line}%} to message
@@ -1262,7 +1276,7 @@ command /youtube:
     aliases: yt
     trigger:
         if {server::youtube::link} is set:
-            send {server::youtube::link}
+            send formatted "<link:%{server::youtube::link}%>&6Click Here&2 to check out our youtube channel!<reset>"
         else:
             send "&cThis server hasn't setup a youtube link!"
 
@@ -1271,24 +1285,62 @@ command /discord:
     aliases: dc
     trigger:
         if {server::discord::link} is set:
-            send {server::discord::link}
+            send formatted "<link:%{server::discord::link}%>&6Click Here&2 to check out our discord!<reset>"
         else:
             send "&cThis server hasn't setup a discord link!"
 
 on load:
     loop all players:
         send "&2EventCore has been updated! (or just reloaded)!" to loop-player
-        send "&2Be sure to type &e`/echelp`&2 to view new commands!" loop-player
+        send "&2Be sure to type &e`/echelp`&2 to view new commands!" to loop-player
         if loop-player has permission "ec.host.panel":
-            send "&2Also don't forget to type &e`/ec`&2 to check out new features!" loop-player
+            send "&2Also don't forget to type &e`/ec`&2 to check out new features!" to loop-player
         
 
-every 1 second:
-    if {ec::config::default-gamemode} is set:
-        set player's gamemode to {ec::config::default-gamemode}
-    else:
-        set player's gamemode to survival
-    if {server::spawn} is set:
-        teleport player to {server::spawn}
-    else:
-        teleport player to spawn
+every 1 second in "world":
+    if {ec::config::allow-spectate} isn't true:
+        loop all players:
+            if loop-player's gamemode is spectator:
+                if {ec::config::default-gamemode} is set:
+                    set loop-player's gamemode to {ec::config::default-gamemode}
+                else:
+                    set loop-player's gamemode to survival
+                if {server::spawn} is set:
+                    teleport loop-player to {server::spawn}
+                else:
+                    teleport loop-player to spawn
+
+
+
+
+command /hunger:
+    description: Toggle worldwide hunger
+    permission: ec.host.toggle.hunger
+    trigger:
+        if {server::hunger} is true:
+            set {server::hunger} to false
+            broadcast "&cHunger has been disabled worldwide."
+        else:
+            set {server::hunger} to true
+            broadcast "&aHunger has been enabled worldwide."
+
+every 10 seconds:
+    if {server::hunger} is false:
+        execute CONSOLE command "effect give @a saturation 10 255 true"
+
+command /smite <player>:
+    description: Smite a player
+    permission: ec.host.smite
+    trigger:
+        strike lightning at arg-1
+
+
+command /singleaward <player>:
+    description: Award 1 token, 1 time
+    permission: ec.host.singleaward
+    trigger:
+        if {server::%uuid of player%::hasClaimed} isn't true:
+            execute CONSOLE command "addtoken %arg-1%"
+        else:
+            send "&cYou've already claimed this!"
+            set {server::%uuid of player%::hasClaimed} to false
