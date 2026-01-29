@@ -22,6 +22,23 @@ on join:
     clear leggings of player
     clear boots of player
 
+    if {ec::config::default-gamemode} is set:
+        set player's gamemode to {ec::config::default-gamemode}
+
+
+every second:
+    if {ec::config::use-colored-names} is true:
+        if plugin "LuckPerms" is enabled:
+            if plugin "Vault" is enabled:
+                loop all players:
+                    if {server::alive::*} contains loop-value:
+                        set player's display name to "&2%player's display name%&r"
+                    else:
+                        if {server::hosts::*} doesn't contain loop-value:
+                            set player's display name to "&c%player's display name%&r"
+                        else:
+                            set player's display name to "&6%player's display name%&r"
+
 # Main Host Panel
 command /ec:
     executable by: players
@@ -29,11 +46,139 @@ command /ec:
     description: Open the EventCore host panel
     trigger:
         set {_panel} to a new chest inventory with 6 rows named "EventCore - Home"
+        set slot 0 of {_panel} to a barrier named "&cClose" with lore "Close the panel"
+        set slot 10 of {_panel} to a skeleton skull named "Dead Settings" with lore "Manage dead player defaults"
+        set slot 12 of {_panel} to the player's skull named "Player Settings" with lore "Default Player Settings"
+        set slot 14 of {_panel} to an ender pearl named "Warps" with lore "Warp Settings"
+        set slot 16 of {_panel} to an enchanted book named "Ads" with lore "Advertisements"
         open {_panel} to player
+
+function toggleVar(var: object) :: boolean:
+    if {_var} is true:
+        set {_var} to false
+    else:
+        set {_var} to true
+    return {_var}
+
+function openConfig(page: text = "home", player: player):
+    if {_page} is "home":
+        make {_player} execute command "ec"
+    else if {_page} is "dead":
+        set {_config} to a new chest inventory with 5 rows named "EC - Dead Players"
+        set slot 0 of {_config} to a barrier named "&cBack"
+        if {ec::config::allow-spectate} is true:
+            set slot 10 of {_config} to lime wool named "&cDisable Spectating" with lore "&2Spectating is &a&lENABLED"
+        else:
+            set slot 10 of {_config} to red wool named "&cEnable Spectating" with lore "&cSpectating is &4&lDISABLED"
+
+        if {ec::config::auto-spectate} is true:
+            set slot 12 of {_config} to lime wool named "&cDisable Auto Spectating" with lore "&2Auto Spectating is &a&lENABLED"
+        else:
+            set slot 12 of {_config} to red wool named "&cEnable Auto Spectating" with lore "&cAuto Spectating is &4&lDISABLED"
+
+        if {ec::config::default-gamemode} is survival:
+            set slot 14 of {_config} to grass block named "&2Current:&e Survival" with lore "&2Default Gamemode is &eSurvival!"
+        else if {ec::config::default-gamemode} is adventure:
+            set slot 14 of {_config} to grass block named "&2Current:&e Adventure" with lore "&2Default Gamemode is &eAdventure!"
+        else if {ec::config::default-gamemode} is spectator:
+            set slot 14 of {_config} to grass block named "&2Current:&e Spectator" with lore "&2Default Gamemode is &eSpectator!"
+        else if {ec::config::default-gamemode} is creative:
+            set slot 14 of {_config} to grass block named "&2Current:&e Creative" with lore "&2Default Gamemode is &eCreative!"
+        else:
+            set slot 14 of {_config} to grass block named "&2Current:&e Survival" with lore "&2Default Gamemode is &eSurvival!"
+        open {_config} to {_player}
+
+    else if {_page} is "player-manage":
+        set {_config} to a new chest inventory with 5 rows named "EC - Player Defaults"
+        set slot 0 of {_config} to a barrier named "&cBack"
+        if {ec::config::use-colored-names} is true:
+            set slot 12 of {_config} to lime wool named "&cDisable Colored Names" with lore "&2Colored names are &a&lENABLED"
+        else:
+            set slot 12 of {_config} to red wool named "&cEnable Colored Names" with lore "&cColored names are &4&lDISABLED"
+        open {_config} to {_player}
+
+    else if {_page} is "warps":
+        set {_config} to a new chest inventory with 5 rows named "EC - Warps"
+        set slot 0 of {_config} to a barrier named "&cBack"
+        set slot 10 of {_config} to a lime wool named "&2Create a Warp"
+        set slot 13 of {_config} to a yellow wool named "&6List Warps"
+        set slot 16 of {_config} to a red wool named "&cDelete a Warp"
+        open {_config} to {_player}
+    else if {_page} is "ads"
+        set {_config} to a new chest inventory with 5 rows named "EC - Advertisements"
+        set slot 0 of {_config} to a barrier named "&cBack"
+        set slot 10 of {_config} to a lime wool named "&2Create an ad"
+        set slot 12 of {_config} to a yellow wool named "&6List ads"
+        set slot 14 of {_config} to a red wool named "&cDelete an ad"
+        set slot 16 of {_config} to a green wool named "&2Set &cYoutube&2 ad"
+        set slot 18 of {_config} to a green wool named "&2Set &bDiscord&2 ad"
+        open {_config} to {_player}
 
 on inventory click:
     if name of event-inventory is "EventCore - Home":
         cancel event
+        if event-slot is 0:
+            close the player's inventory
+        else if event-slot is 10:
+            openConfig("dead", player)
+    else if name of event-inventory is "EC - Dead Players":
+        cancel event
+        if event-slot is 0:
+            openConfig("home", player)
+        else if event-slot is 10:
+            set {_new} to toggleVar({ec::config::allow-spectate})
+            set {ec::config::allow-spectate} to {_new}
+            openConfig("dead", player)
+        else if event-slot is 12:
+            set {_new} to toggleVar({ec::config::auto-spectate})
+            set {ec::config::auto-spectate} to {_new}                   
+            openConfig("dead", player)
+        else if event-slot is 14:
+            if {ec::config::default-gamemode} is survival:
+                set {ec::config::default-gamemode} to adventure
+            else if {ec::config::default-gamemode} is adventure:
+                set {ec::config::default-gamemode} to creative
+            else if {ec::config::default-gamemode} is creative:
+                set {ec::config::default-gamemode} to spectator
+            else:
+                set {ec::config::default-gamemode} to adventure
+            openConfig("dead", player)
+    else if name of event-inventory is "EC - Player Defaults":
+        cancel event
+        if event-slot is 0:
+            openConfig("home", player)
+        else if event-slot is 10:
+            set {_new} to toggleVar({ec::config::use-colored-names})
+            set {ec::config::use-colored-names} to {_new}
+            openConfig("player-manage", player)
+    else if name of event-inventory is "EC - Warps":
+        cancel event
+        if event-slot is 0:
+            openConfig("home", player)
+        else if event-slot is 10:
+
+    else if name of event-inventory is "EC - Advertisements":
+        cancel event
+        if event-slot is 0:
+            openConfig("home", player)
+        else if event-slot is 10:
+            close the player's inventory
+            make player execute command "createad"
+        else if event-slot is 12:
+            close the player's inventory
+            make player execute command "listads"
+        else if event-slot is 14:
+            close the player's inventory
+            set {server::%uuid of player%::awaiting::ad::delete} to true
+            send "&2Type the name of the ad to delete:"
+        else if event-slot is 16:
+            close the player's inventory
+            set {server::%uuid of player%::awaiting::ad::youtube} to true
+            send "&2Type your &cyoutube&2 link:"
+        else if event-slot is 18:
+            close the player's inventory
+            set {server::%uuid of player%::awaiting::ad::discord} to true
+            send "&2Type your &bdiscord&2 link:"
 
 
 # Warps / TP
@@ -69,6 +214,14 @@ command /delwarp <text>:
 
         delete {server::warps::%{_name}%}
         send "&2Warp &e%{_name}%&2 Successfully deleted!"
+
+command /listwarps:
+    description: List all available warps
+    permission: ec.host.warp.list
+    usage: warplist, listwarp, allwarps, allwarp
+    trigger:
+        loop {server::warps::*}:
+            send "- &e%loop-index%"
 
 command /tphere <text>:
     executable by: players
@@ -381,7 +534,7 @@ command /deletekit <text>:
         if {server::kits::%{_kit}%::exists} is not true:
             send "&cThis kit does not exist!"
             stop
-
+        set {server::kits::%{_kit}%::exists} to false
         delete {server::kits::%{_kit}%}
         send "&2Deleted kit: &e%{_kit}%"
 
@@ -419,10 +572,13 @@ on death of player:
         add victim to {server::dead::*}
 
 on respawn:
-    if {server::spawn} is set:
-        teleport player to {server::spawn}
+    if {ec::config::auto-spectate} isn't true:
+        if {server::spawn} is set:
+            teleport player to {server::spawn}
+        else:
+            teleport player to spawn
     else:
-        teleport player to spawn
+        make player execute command "spectate"
 
 
 # Gamemode
@@ -542,7 +698,7 @@ command /accepttoken <player>:
         remove 1 from {server::%uuid of {_p}%::tokens}
         broadcast "&e%{_p}%&2 has used a revive token!"
         send "&2You accepted %{_p}%'s token!" to player
-        send "&2You're token has been accepted!" to {_p}
+        send "&2Your token has been accepted!" to {_p}
 
 command /denytoken <player>:
     description: Deny a player's revive token
@@ -554,7 +710,7 @@ command /denytoken <player>:
             stop
         set {server::%uuid of {_p}%::requestingRevive} to false
         send "&cYou denied %{_p}%'s token!" to player
-        send "&cYou're token has been denied!" to {_p}
+        send "&cYour token has been denied!" to {_p}
 
 command /pvp:
     description: Toggle PvP in the current region
@@ -672,7 +828,24 @@ command /fall:
             set {server::region::%{_reg}%::fall} to true
             make player execute command "region flag %{_reg}% -w %{_world}% fall-damage allow"
             broadcast "&a🪂 Fall damage enabled &7in region &e%{_reg}% &7(%{_world}%)"
+            
+# --- PORTAL USE ---
+command /portals:
+    description: Toggle portal use
+    permission: ec.host.toggleportals
+    trigger:
+        if {ec::config::portals-allowed} is true:
+            set {ec::config::portals-allowed} to false
+            broadcast "&cPortals have been disabled!"
+        else:
+            set {ec::config::portals-allowed} to true
+            broadcast "&aPortals have been enabled!"
 
+
+on portal enter:
+    if {ec::config::portals-allowed} isn't true:
+        if event-entity is a player:
+            cancel event
 # Scoreboard
 on join:
     if {server::hosts::*} doesn't contain player:
@@ -843,3 +1016,279 @@ on chat:
         if {server::hosts::*} does not contain uuid of player:
             cancel event
             send "&cChat is currently muted! Only hosts can speak."
+
+
+# Other User Commands
+command /spectate:
+    description: Toggle Spectator mode
+    trigger:
+        if {ec::config::allow-spectate} is true:
+            if player's gamemode isn't spectator:
+                set player's gamemode to spectator
+            else:
+                if {ec::config::default-gamemode} is set:
+                    set player's gamemode to {ec::config::default-gamemode}
+                else:
+                    set player's gamemode to survival
+                if {server::spawn} is set:
+                    teleport player to {server::spawn}
+                else:
+                    teleport player to spawn
+        else:
+            send "&cSpectating is disabled!"
+
+
+# Help Menu
+command /echelp:
+    trigger:
+        send "&c&l=== EventCore Help ==="
+        
+        # Host Panel
+        if player has permission "ec.host.panel":
+            send "&e/ec &7- Open the host panel"
+        
+        # Warps / TP
+        if player has permission "ec.host.warp.create":
+            send "&e/setwarp <name> &7- Create a warp"
+        if player has permission "ec.host.warp.delete":
+            send "&e/delwarp <name> &7- Delete a warp"
+        if player has permission "ec.host.warp.list":
+            send "&e/listwarps &7- List all warps"
+        if player has permission "ec.host.tp.here":
+            send "&e/tphere <player|all|alive|dead> &7- Teleport players to you"
+        if player has permission "ec.host.tp.all":
+            send "&e/tpall [warp] &7- Teleport all players to you or a warp"
+        if player has permission "ec.host.tp.alive":
+            send "&e/tpalive [warp] &7- Teleport alive players"
+        if player has permission "ec.host.tp.dead":
+            send "&e/tpdead [warp] &7- Teleport dead players"
+        
+        # Hosts
+        if player has permission "ec.host.addhost":
+            send "&e/addhost <player> &7- Make a player a host"
+        if player has permission "ec.host.remhost":
+            send "&e/remhost <player> &7- Remove a host"
+        
+        # Server
+        if player has permission "ec.server.setserver":
+            send "&e/setserver <name> &7- Set the server name"
+        if player has permission "ec.server.event.setevent":
+            send "&e/setevent <name> &7- Set the next event"
+        if player has permission "ec.setspawn":
+            send "&e/setspawn &7- Set the server spawnpoint"
+        
+        # Timers / Cooldowns
+        if player has permission "ec.host.timer":
+            send "&e/timer <seconds> &7- Start a countdown timer"
+        if player has permission "ec.host.event.cooldown":
+            send "&e/eventcooldown <minutes> &7- Start the event cooldown"
+        
+        # Kits
+        if player has permission "ec.host.kits.create":
+            send "&e/createkit <name> &7- Create a kit"
+        if player has permission "ec.kits.givekit":
+            send "&e/givekit <player|all|alive|dead> <kit> &7- Give a kit"
+        if player has permission "ec.host.kits.delete":
+            send "&e/deletekit <name> &7- Delete a kit"
+        
+        # Inventory
+        if player has permission "ec.invsee":
+            send "&e/invsee <player> &7- View/Edit a player's inventory"
+        
+        # Stats
+        send "&e/stats [player] &7- View player's stats"
+        
+        # Gamemodes
+        if player has permission "ec.host.gamemode.creative":
+            send "&e/gmc [player] &7- Switch to Creative"
+        if player has permission "ec.host.gamemode.survival":
+            send "&e/gms [player] &7- Switch to Survival"
+        if player has permission "ec.host.gamemode.spectator":
+            send "&e/gmsp [player] &7- Switch to Spectator"
+        if player has permission "ec.host.gamemode.adventure":
+            send "&e/gma [player] &7- Switch to Adventure"
+        
+        # Wins & Tokens
+        if player has permission "ec.host.wins.add":
+            send "&e/addwin <player> &7- Give a player a win"
+        if player has permission "ec.host.wins.remove":
+            send "&e/removewin <player> &7- Remove a win from a player"
+        if player has permission "ec.host.tokens.add":
+            send "&e/addtoken <player> &7- Give a player a token"
+        if player has permission "ec.host.tokens.remove":
+            send "&e/removetoken <player> &7- Remove a token from a player"
+        send "&e/usetoken &7- Use a revive token"
+        if player has permission "ec.host.tokens.accept":
+            send "&e/accepttoken <player> &7- Accept a token request"
+        if player has permission "ec.host.tokens.deny":
+            send "&e/denytoken <player> &7- Deny a token request"
+        
+        # Revives
+        if player has permission "ec.host.revive":
+            send "&e/revive <all|last|player> [seconds] &7- Revive players"
+        
+        # Chat
+        if player has permission "ec.host.chat.mute":
+            send "&e/mutechat &7- Mute chat"
+            send "&e/unmutechat &7- Unmute chat"
+        
+        # PvP / WG
+        if player has permission "ec.host.worldguard.pvp":
+            send "&e/pvp &7- Toggle PvP in region"
+        if player has permission "ec.host.worldguard.break":
+            send "&e/break &7- Toggle block breaking in region"
+        if player has permission "ec.host.worldguard.place":
+            send "&e/place &7- Toggle block placing in region"
+        if player has permission "ec.host.worldguard.flow":
+            send "&e/flow &7- Toggle water/lava flow in region"
+        if player has permission "ec.host.worldguard.fall":
+            send "&e/fall &7- Toggle fall damage in region"
+        
+        # Misc
+        if player has permission "ec.whereami":
+            send "&e/whereami &7- Show current region and world"
+
+
+on command:
+    if command is "ec help":
+        make player execute command "echelp"
+    else if command is "help ec":
+        make player execute command "echelp"
+    else if command is "help":
+        wait 5 ticks
+        make player execute command "echelp"
+
+
+
+# Ads
+command /createad:
+    description: Create an ad
+    permission: ec.host.ad.create
+    trigger:
+        set {server::%uuid of player%::awating::ad::create::name} to true
+
+command /deletead <text>:
+    description: Delete an ad
+    permission: ec.host.ad.delete
+    trigger:
+        set {_ad} to arg-1
+        if {server::ads::%{_ad}%::*} isn't set:
+            send "&cThis ad doesn't exist!" 
+        else:
+            delete {server::ads::%{_ad}%::*}
+            delete {server::ads::%{_ad}%}
+            send "&2Successfuly delete the ad!"
+command /listads:
+    description: View a list of ads
+    permission: ec.host.ads.view
+    trigger:
+        if size of {server::ads::*} < 1:
+            send "&cNo ads set!"
+            send "&2Create one with &e`/createad`"
+            stop
+        loop {server::ads::*}:
+            send "&2- &e%loop-index%"
+
+command /editad <text> <number>:
+    description: Edit an ad's line
+    permission: ec.host.ad.edit
+    trigger:
+        set {_ad} to arg-1
+        set {_line} to arg-2
+        set {server::%uuid of player%::awating::ad::edit::line} to "%{_ad}%:%{_line}%"
+        
+on chat:
+    # Creating an ad
+    if {server::%uuid of player%::awating::ad::create::name} is true:
+        cancel event
+        set {_adName} to message
+        set {server::ads::%{_adName}%} to message
+        send "&2Created ad named &e%{_adName}%&2!"
+        send "&2You can edit it by typing &e/editad %{_adName}% <line_number>"
+        set {server::%uuid of player%::awating::ad::create::name} to false
+        delete {server::%uuid of player%::awating::ad::create::name}
+
+    # Editing an ad
+    else if {server::%uuid of player%::awating::ad::edit::line} is set:
+        set {_words::*} to {server::%uuid of player%::awating::ad::edit::line} split at ":"
+        set {_ad} to {_words::1}
+        set {_line} to {_words::2}
+        if not {server::ads::%{_ad}%} is set:
+            send "&cAd &e%{_ad}% &cdoesn't exist! Use &e/createad <ad> &cto make one."
+        else:
+            set {server::ads::%{_ad}%::line::%{_line}%} to message
+            send "&2Ad successfully edited! &6Updated Ad:"
+            loop {server::ads::%{_ad}%::line::*}:
+                send formatted loop-value
+        set {server::%uuid of player%::awating::ad::edit::line} to false
+        delete {server::%uuid of player%::awating::ad::edit::line}
+
+    # Deleting an ad
+    else if {server::%uuid of player%::awaiting::ad::delete} is true:
+        cancel event
+        make player execute command "deletead %message%"
+        send "&2Attempted to delete ad named &e%message%&2!"
+        set {server::%uuid of player%::awaiting::ad::delete} to false
+        delete {server::%uuid of player%::awaiting::ad::delete}
+
+    # Updating YouTube link
+    else if {server::%uuid of player%::awaiting::ad::youtube} is true:
+        set {server::youtube::link} to message
+        send "&2YouTube link updated to &e%message%&2!"
+        set {server::%uuid of player%::awaiting::ad::youtube} to false
+        delete {server::%uuid of player%::awaiting::ad::youtube}
+
+    # Updating Discord link
+    else if {server::%uuid of player%::awaiting::ad::discord} is true:
+        set {server::discord::link} to message
+        send "&2Discord link updated to &e%message%&2!"
+        set {server::%uuid of player%::awaiting::ad::discord} to false
+        delete {server::%uuid of player%::awaiting::ad::discord}
+    
+
+command /ad <text>:
+    description: Advertise an ad
+    permission: ec.host.ad.ad
+    trigger:
+        if {server::ads::%{_ad}%::*} isn't set:
+            send "&cThis ad doesn't exist!" 
+        else:
+            loop {server::ads::%{_ad}%::line::*}:
+                broadcast formatted loop-value
+
+
+command /youtube:
+    description: View the server's Youtube link
+    aliases: yt
+    trigger:
+        if {server::youtube::link} is set:
+            send {server::youtube::link}
+        else:
+            send "&cThis server hasn't setup a youtube link!"
+
+command /discord:
+    description: View the server's Discord link
+    aliases: dc
+    trigger:
+        if {server::discord::link} is set:
+            send {server::discord::link}
+        else:
+            send "&cThis server hasn't setup a discord link!"
+
+on load:
+    loop all players:
+        send "&2EventCore has been updated! (or just reloaded)!" to loop-player
+        send "&2Be sure to type &e`/echelp`&2 to view new commands!" loop-player
+        if loop-player has permission "ec.host.panel":
+            send "&2Also don't forget to type &e`/ec`&2 to check out new features!" loop-player
+        
+
+every 1 second:
+    if {ec::config::default-gamemode} is set:
+        set player's gamemode to {ec::config::default-gamemode}
+    else:
+        set player's gamemode to survival
+    if {server::spawn} is set:
+        teleport player to {server::spawn}
+    else:
+        teleport player to spawn
