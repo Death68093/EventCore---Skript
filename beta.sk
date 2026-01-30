@@ -1,6 +1,6 @@
 options:
     version: 0.0
-    subVersion: 1
+    sub version: 1
     channel: "BETA"
     # Version is "0.0.1 BETA"
 
@@ -1366,6 +1366,8 @@ command /smite <text>:
 on load:
     if {ec::config::version} isn't {@version}:
         set {ec::config::version} to {@version}
+    else if {ec::config::sub version} isn't {@sub version}:
+        set {ec::config::sub version} to {@sub version}
     else:
         stop
     if {ec::config::channel} isn't {@channel}:
