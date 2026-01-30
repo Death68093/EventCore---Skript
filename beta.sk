@@ -1,6 +1,8 @@
 options:
-    version: 1.0.1
+    version: 0.0
+    subVersion: 1
     channel: "BETA"
+    # Version is "0.0.1 BETA"
 
 on join:
     wait 5 ticks
