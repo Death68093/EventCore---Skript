@@ -1,3 +1,7 @@
+options:
+    version: 1.0.1
+    channel: "BETA"
+
 on join:
     wait 5 ticks
     if {server::name} isn't set:
@@ -164,7 +168,9 @@ on inventory click:
         if event-slot is 0:
             openConfig("home", player)
         else if event-slot is 10:
-
+            close the player's inventory
+            send "&2Type the name of the warp to create:"
+            set {server::%uuid of player%::awaiting::warp::create} to true
     else if name of event-inventory is "EC - Advertisements":
         cancel event
         if event-slot is 0:
@@ -1185,12 +1191,13 @@ command /deletead <text>:
     permission: ec.host.ad.delete
     trigger:
         set {_ad} to arg-1
-        if {server::ads::%{_ad}%::*} isn't set:
+        if {server::ads::%{_ad}%} isn't set:
             send "&cThis ad doesn't exist!" 
         else:
             delete {server::ads::%{_ad}%::*}
             delete {server::ads::%{_ad}%}
             send "&2Successfuly delete the ad!"
+
 command /listads:
     description: View a list of ads
     permission: ec.host.ads.view
@@ -1224,12 +1231,14 @@ on chat:
 
     # Editing an ad
     else if {server::%uuid of player%::awating::ad::edit::line} is set:
+        cancel event
         set {_words::*} to {server::%uuid of player%::awating::ad::edit::line} split at ":"
         set {_ad} to {_words::1}
         set {_line} to {_words::2}
         if {server::ads::%{_ad}%} isn't set:
             send "&cAd &e%{_ad}% &cdoesn't exist! Use &e/createad <ad> &cto make one."
         else:
+            cancel event
             set {server::ads::%{_ad}%::line::%{_line}%} to message
             send "&2Ad successfully edited! &6Updated Ad:"
             loop {server::ads::%{_ad}%::line::*}:
@@ -1247,6 +1256,7 @@ on chat:
 
     # Updating YouTube link
     else if {server::%uuid of player%::awaiting::ad::youtube} is true:
+        cancel event
         set {server::youtube::link} to message
         send "&2YouTube link updated to &e%message%&2!"
         set {server::%uuid of player%::awaiting::ad::youtube} to false
@@ -1254,17 +1264,24 @@ on chat:
 
     # Updating Discord link
     else if {server::%uuid of player%::awaiting::ad::discord} is true:
+        cancel event
         set {server::discord::link} to message
         send "&2Discord link updated to &e%message%&2!"
         set {server::%uuid of player%::awaiting::ad::discord} to false
         delete {server::%uuid of player%::awaiting::ad::discord}
+    else if {server::%uuid of player%::awaiting::warp::create} is true:
+        cancel event
+        set {_warpName} to message
+        make player execute command "setwarp %{@warpName}%"
+        set {server::%uuid of player%::awaiting::warp::create} to false
+        delete {server::%uuid of player%::awaiting::warp::create}
     
 
 command /ad <text>:
     description: Advertise an ad
     permission: ec.host.ad.ad
     trigger:
-        if {server::ads::%{_ad}%::*} isn't set:
+        if {server::ads::%{_ad}%} isn't set:
             send "&cThis ad doesn't exist!" 
         else:
             loop {server::ads::%{_ad}%::line::*}:
@@ -1289,12 +1306,7 @@ command /discord:
         else:
             send "&cThis server hasn't setup a discord link!"
 
-on load:
-    loop all players:
-        send "&2EventCore has been updated! (or just reloaded)!" to loop-player
-        send "&2Be sure to type &e`/echelp`&2 to view new commands!" to loop-player
-        if loop-player has permission "ec.host.panel":
-            send "&2Also don't forget to type &e`/ec`&2 to check out new features!" to loop-player
+
         
 
 every 1 second in "world":
@@ -1319,28 +1331,223 @@ command /hunger:
     trigger:
         if {server::hunger} is true:
             set {server::hunger} to false
-            broadcast "&cHunger has been disabled worldwide."
+            broadcast "&c&lHunger has been disabled"
         else:
             set {server::hunger} to true
-            broadcast "&aHunger has been enabled worldwide."
+            broadcast "&a&lHunger has been enabled"
 
 every 10 seconds:
     if {server::hunger} is false:
         execute CONSOLE command "effect give @a saturation 10 255 true"
 
-command /smite <player>:
+command /smite <text>:
     description: Smite a player
     permission: ec.host.smite
+    usage: /smite (<player>|all|alive|dead)
     trigger:
-        strike lightning at arg-1
-
-
-command /singleaward <player>:
-    description: Award 1 token, 1 time
-    permission: ec.host.singleaward
-    trigger:
-        if {server::%uuid of player%::hasClaimed} isn't true:
-            execute CONSOLE command "addtoken %arg-1%"
+        set {_arg} to arg-1
+        if {_arg1} is "all":
+            loop all players:
+                if {server::hosts::*} doesn't contain uuid of loop-player:
+                    strike lightning at loop-player
+        else if {_arg} is "alive":
+            loop {server::alive::*}:
+                strike lightning at loop-player
+        else if {_arg} is "dead":
+            loop {server::dead::*}:
+                strike lightning at loop-player
         else:
-            send "&cYou've already claimed this!"
-            set {server::%uuid of player%::hasClaimed} to false
+            set {_arg} to {_arg} parsed as player
+            strike lightning at {_arg}
+
+
+on load:
+    if {ec::config::version} isn't {@version}:
+        set {ec::config::version} to {@version}
+    else:
+        stop
+    if {ec::config::channel} isn't {@channel}:
+        set {ec::config::channel} to {@channel}
+    loop all players:
+        send "&2EventCore has been updated to %{@version}%!" to loop-player
+        send "&2Be sure to type &e`/echelp`&2 to view new commands!" to loop-player
+        if loop-player has permission "ec.host.panel":
+            send "&2Also don't forget to type &e`/ec`&2 to check out new features!" to loop-player
+            send "&3You are on the &e%{ec::config::channel}% &3channel." to loop-player
+            if {ec::config::channel} is "BETA":
+                send "&c&lWARNING: &cYou are using the BETA channel which may be unstable and very buggy!" to loop-player
+
+
+
+command /createpoll:
+    description: Start creating a poll (draft saved per-creator)
+    permission: ec.host.poll.create
+    trigger:
+        if {poll::temp::%uuid of player%::state} is set:
+            send "&cYou are already creating a poll. Type &ecancel&c to abort."
+            stop
+        set {poll::temp::%uuid of player%::state} to "question"
+        delete {poll::temp::%uuid of player%::options::*}
+        send "&2Poll creation started. Type the poll question now. Type &edone&2 to finish options or &ecancel&2 to abort at any time."
+
+
+on chat:
+    if {poll::temp::%uuid of player%::state} is "question":
+        cancel event
+        if message is "cancel":
+            delete {poll::temp::%uuid of player%::*}
+            send "&cPoll creation cancelled."
+            stop
+        set {poll::temp::%uuid of player%::question} to message
+        set {poll::temp::%uuid of player%::state} to "option"
+        send "&2Question saved. Type option #1 for the poll (minimum 2 required). Type &edone&2 when you've finished adding options, or &ecancel&2 to abort."
+
+    else if {poll::temp::%uuid of player%::state} is "option":
+        cancel event
+        if message is "cancel":
+            delete {poll::temp::%uuid of player%::*}
+            send "&cPoll creation cancelled."
+            stop
+        if message is "done":
+            set {_count} to size of {poll::temp::%uuid of player%::options::*}
+            if {_count} < 2:
+                send "&cYou need at least 2 options before finishing. Currently: &e%{_count}%&c."
+                stop
+            # finalize draft (move to draft namespace owned by creator)
+            set {poll::draft::%uuid of player%::question} to {poll::temp::%uuid of player%::question}
+            delete {poll::draft::%uuid of player%::options::*}
+            loop {poll::temp::%uuid of player%::options::*}:
+                add loop-value to {poll::draft::%uuid of player%::options::*}
+            delete {poll::temp::%uuid of player%::*}
+            send "&aDraft saved. Use &e/sendpoll&ato publish your draft when ready."
+            stop
+        # otherwise treat message as option text
+        add message to {poll::temp::%uuid of player%::options::*}
+        set {_i} to size of {poll::temp::%uuid of player%::options::*}
+        send "&2Option &e%{_i}%&2 saved. Type next option, or &edone&2 if finished."
+
+command /sendpoll [<text>]:
+    description: Publish your draft poll (or publish <player>'s draft if you have permission)
+    permission: ec.host.poll.send
+    trigger:
+        if {poll::active} is true:
+            send "&cA poll is already active. End it first with /endpoll."
+            stop
+
+        if arg-1 is set:
+            set {_target} to arg-1 parsed as string
+            if offline player {_target} is set:
+                set {_uuid} to uuid of offline player {_target}
+            else:
+                send "&cPlayer not found or no draft for that name."
+                stop
+            if {poll::draft::%{_uuid}%::question} isn't set:
+                send "&cThat player has no saved draft."
+                stop
+        else:
+            set {_uuid} to uuid of player
+            if {poll::draft::%{_uuid}%::question} isn't set:
+                send "&cYou have no saved draft. Use /createpoll to start one."
+                stop
+
+        set {poll::active} to true
+        set {poll::active::creator} to {_uuid}
+        set {poll::active::question} to {poll::draft::%{_uuid}%::question}
+        delete {poll::active::options::*}
+        loop {poll::draft::%{_uuid}%::options::*}:
+            add loop-value to {poll::active::options::*}
+
+        delete {poll::active::vote::*}
+        delete {poll::active::tally::*}
+        set {_i} to 0
+        loop {poll::active::options::*}:
+            add 1 to {_i}
+            set {poll::active::tally::%{_i}%} to 0
+
+        delete {poll::draft::%{_uuid}%::*}
+
+        broadcast "&e--- New Poll ---"
+        broadcast "&6Question: &r%{poll::active::question}%"
+        set {_i} to 0
+        loop {poll::active::options::*}:
+            add 1 to {_i}
+            broadcast formatted "&6%{_i}%. <run cmd:/pollvote %{_i}%>&e%loop-value%<reset>"
+        broadcast "&2To vote: &e/pollvote <option_number>&2 (or click the option)."
+        broadcast "&2Staff: end with &e/endpoll&2 when finished."
+
+command /cancelpoll:
+    description: Cancel your saved draft
+    permission: ec.host.poll.cancel
+    trigger:
+        if {poll::draft::%uuid of player%::question} isn't set:
+            send "&cYou have no draft to cancel."
+            stop
+        delete {poll::draft::%uuid of player%::*}
+        send "&aYour draft has been cancelled."
+
+command /pollvote <number>:
+    description: Vote in the active poll
+    usage: /pollvote <option_number>
+    trigger:
+        if {poll::active} is not true:
+            send "&cThere is no active poll right now."
+            stop
+        set {_opt} to arg-1 parsed as integer
+        if {_opt} is not set:
+            send "&cInvalid option number."
+            stop
+        if {poll::active::options::%{_opt}%} is not set:
+            send "&cThat option doesn't exist."
+            stop
+        if {poll::active::vote::%uuid of player%} is set:
+            set {_prev} to {poll::active::vote::%uuid of player%}
+            if {_prev} is {_opt}:
+                send "&eYou already voted for option &6%{_opt}%&e."
+                stop
+
+            if {poll::active::tally::%{_prev}%} is set:
+                remove 1 from {poll::active::tally::%{_prev}%}
+
+        set {poll::active::vote::%uuid of player%} to {_opt}
+        add 1 to {poll::active::tally::%{_opt}%}
+        send "&aVote recorded: option &e%{_opt}%&a (%{poll::active::options::%{_opt}%}%)."
+
+command /endpoll:
+    description: End the active poll and show results
+    permission: ec.host.poll.end
+    aliases: /closepoll, /stoppoll, /finishpoll, /pollresults
+    trigger:
+        if {poll::active} is not true:
+            send "&cThere is no active poll."
+            stop
+
+        broadcast "&e--- Poll Results ---"
+        broadcast "&6Question: &r%{poll::active::question}%"
+        set {_i} to 0
+        loop {poll::active::options::*}:
+            add 1 to {_i}
+            set {_votes} to {poll::active::tally::%{_i}%}
+            if {_votes} is not set:
+                set {_votes} to 0
+            broadcast formatted "&6%{_i}%. &e%loop-value% &2- &a%{_votes}% votes"
+
+        delete {poll::active}
+        delete {poll::active::*}
+
+        broadcast "&2Poll ended."
+
+command /currentpoll:
+    description: View current active poll (brief)
+    trigger:
+        if {poll::active} is not true:
+            send "&cNo active poll."
+            stop
+        send "&6Question: &r%{poll::active::question}%"
+        set {_i} to 0
+        loop {poll::active::options::*}:
+            add 1 to {_i}
+            set {_votes} to {poll::active::tally::%{_i}%}
+            if {_votes} is not set:
+                set {_votes} to 0
+            send "&6%{_i}%. &e%loop-value% &2- &a%{_votes}%"
+
